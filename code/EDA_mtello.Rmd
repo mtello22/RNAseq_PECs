@@ -1,0 +1,337 @@
+---
+title: "EDA"
+author: "Marco Tello"
+date: "2024-02-22"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+# Differential expression tools
+library(DESeq2)
+library(edgeR)
+# Data format and ID conversion
+library(data.table)
+library(tidyverse)
+library(biomaRt)
+# library(plyr)
+# Plot generation 
+library(ggplot2)
+library(factoextra)
+library(pheatmap)
+library(EnhancedVolcano)
+# Gene set enrichment analysis
+library(fgsea)
+library(reactome.db)
+library(org.Rn.eg.db)
+
+data_path <- "~/GitHub/RNAseq_PECs/data"
+
+knitr::opts_chunk$set(echo = TRUE)
+theme_set(theme_bw())
+```
+
+# Exploratory Data Analysis
+
+The goal is to evaluate
+
+If there are any outlier samples
+Overall count distributions are similar across all samples
+Gene expression variability aligns with experimental conditions
+
+
+## Count distribution
+
+
+```{r read data}
+# Read count table
+# We remove last sample which is not properly identified
+count_df <- read.table(file.path(data_path, "Salmon_EstCount_ENSG.tsv"), 
+                       header = TRUE) 
+
+count_df %>%
+  head()
+```
+By looking at the density plots of the expression data it is possible to determine if any sample is a clear outlier.
+
+```{r}
+count_df %>%
+  pivot_longer(!ENSG) %>%
+  ggplot(aes(x=value, color = name)) +
+    geom_density() +
+    scale_x_continuous(trans = 'log10', labels = scales::comma)
+
+```
+
+```{r}
+temp <- count_df %>%
+  pivot_longer(!ENSG) %>%
+  mutate(condition = str_replace(string = name, 
+                                 pattern = "_\\d", 
+                                 replacement = "")) %>%
+  mutate(condition = case_when(
+    condition == "Ctrl" ~ "blue",
+    condition == "GEN9" ~ "red",
+    condition == "H2O2" ~ "darkgreen",
+    condition == "PNS2" ~ "purple",
+    condition == "PTS3" ~ "pink"))
+
+
+temp %>%
+  ggplot(aes(x=value, color= name))+
+  geom_density() +
+  scale_x_continuous(trans = 'log10', labels = scales::comma) +
+  scale_color_manual(values = temp$condition, 
+                     breaks = temp$name) 
+
+```
+We can observe that one control sample and one sample from the Gen9 group have slightly more counts than other samples.
+
+
+### Filter lowly expressed genes
+
+To increase data quality we removed lowly expressed genes in two steps:
+
+1.  Removed genes with no counts across all samples.
+
+
+```{r Filter no exp genes}
+# Remove columns with gene information 
+exp_mat <- count_df %>%
+  column_to_rownames("ENSG")
+# Remove rows with all entries equal zero
+exp_mat <- exp_mat[!(rowSums(exp_mat == 0) == ncol(exp_mat)),]
+
+```
+
+2.  Removed genes with less than two reads in more than 12 samples.
+
+
+```{r filter lowly exp genes}
+# We use the average 1st quartile as threshold (2.1), round down to 2
+# floor(mean(apply(exp_mat, MARGIN = 2, quantile, 0.25)))
+
+# Select genes to keep
+min_reads <- 2
+min_samples <- 12
+genes_to_keep <- apply(exp_mat >= min_reads, 
+                       MARGIN = 1, sum) > min_samples
+
+# Final gene count matrix
+exp_mat <- exp_mat[genes_to_keep,]
+
+```
+
+Now we repeat the previous visualizations to explore how the count distributions changed after filtering
+
+```{r warning=FALSE}
+exp_mat %>%
+  rownames_to_column("ENSG") %>%
+  pivot_longer(!ENSG) %>%
+  ggplot(aes(x=value, color = name)) +
+    geom_density() +
+    scale_x_continuous(trans = 'log10', labels = scales::comma)
+
+```
+
+
+
+```{r}
+temp <- exp_mat %>%
+  rownames_to_column("ENSG") %>%
+  pivot_longer(!ENSG) %>%
+  mutate(condition = str_replace(string = name, 
+                                 pattern = "_\\d", 
+                                 replacement = "")) %>%
+  mutate(condition = case_when(
+    condition == "Ctrl" ~ "blue",
+    condition == "GEN9" ~ "red",
+    condition == "H2O2" ~ "darkgreen",
+    condition == "PNS2" ~ "purple",
+    condition == "PTS3" ~ "pink"))
+
+
+temp %>%
+  ggplot(aes(x=value, color= name))+
+  geom_density() +
+  scale_x_continuous(trans = 'log10', labels = scales::comma) +
+  scale_color_manual(values = temp$condition, 
+                     breaks = temp$name) 
+```
+
+This step made samples distributions to look mostly normal on the log10 scale.
+
+## CPM normalization
+
+Before proceeding to further analysis we need to normalize the gene counts, we will use *counts per million* (CPM) to adjust for library size and transform it to log space for better visualization.
+
+```{r cpm norm}
+# CPM normalization and transform to log2
+expr_log2cpm <- cpm(exp_mat, 
+                    log = TRUE, 
+                    prior.count = 1) %>% 
+  data.frame() 
+
+expr_log2cpm %>%
+  rownames_to_column(var = "GeneSymbol") %>%
+  pivot_longer(!GeneSymbol) %>%
+  dplyr::select(!GeneSymbol) %>%
+  ggplot(aes(x=value, color= name))+
+  geom_density() 
+```
+
+### Violin plots
+
+To directly compare sample gene expression distribution without overlap between density plots we generated the respective violin plots
+
+```{r violin plot}
+
+temp <- expr_log2cpm %>%
+  rownames_to_column(var="GeneSymbol") %>%
+  pivot_longer(!GeneSymbol) %>%
+  dplyr::select(!GeneSymbol) %>%
+  mutate(condition = str_replace(string = name, 
+                                 pattern = "_\\d+", 
+                                 replacement = "")) 
+# Convert condition to factor 
+temp <- temp %>%
+  mutate(condition = factor(condition, 
+                            levels =c("Ctrl","GEN9","H2O2","PNS2","PTS3")))
+
+# Plot using ggplot with correct fill mapping
+temp %>%
+  ggplot(aes(x=name, y=value, fill = condition)) +
+  geom_violin()+
+  scale_fill_manual(values = c("Ctrl" = "blue", 
+                               "GEN9" = "red", 
+                               "H2O2" = "darkgreen", 
+                               "PNS2" = "purple",
+                               "PTS3" = "pink")) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+
+```
+
+Utilizing log10(CPM) values we can observe that all samples have similar expression distributions.
+
+### Sample-sample correlation plot
+
+Using normalized counts we generated a plot to observe if there is correlation within diet groups which would group the samples accordingly.
+
+```{r sample-sample}
+# Annotation
+
+# Standardize conditon names
+condition <- names(expr_log2cpm) %>% 
+  str_replace(pattern = "_\\d+", 
+              replacement = "")
+
+annot <- data.frame(Diet = as.factor(condition),
+                    row.names = names(expr_log2cpm))
+
+annot_colors <- list(Diet = c("Ctrl" = "blue", 
+                               "GEN9" = "red", 
+                               "H2O2" = "darkgreen", 
+                               "PNS2" = "purple",
+                               "PTS3" = "pink"))
+
+# Heatmap            
+expr_log2cpm %>%
+  cor() %>%
+  pheatmap(annotation_col = annot,
+           annotation_row = annot,
+           show_rownames = FALSE, 
+           annotation_colors = annot_colors, 
+           angle_col = 45)
+
+
+```
+
+
+### Principal Component Analysis (PCA) analysis
+
+Another way of determining relationship between the samples is through a PCA analysis, which reduces the dimentionality of our data to a set of independent variables (principal components) that represent the major proportion of variability in our data.
+
+```{r PCA CPM}
+
+PCs <- prcomp(t(cpm(exp_mat)), center = TRUE, scale = TRUE)
+# Scree plot 
+fviz_eig(PCs)
+# Scatter plot
+eig_val <- get_eigenvalue(PCs)
+PCs <- cbind(annot, PCs$x[,1:10])
+PCs$sample_id <- rownames(PCs)
+
+PCs <- PCs %>%
+  mutate(color_class = case_when(
+    condition == "Ctrl" ~ "blue",
+    condition == "GEN9" ~ "red",
+    condition == "H2O2" ~ "darkgreen",
+    condition == "PNS2" ~ "purple",
+    condition == "PTS3" ~ "pink")) 
+
+PCs %>%
+  ggplot(aes(x = PC1, y = PC2, 
+             color = Diet)) + 
+  geom_point(aes(size = 8)) + 
+  scale_color_manual(values = PCs$color_class, 
+                     breaks = PCs$Diet) +
+  labs(x= paste("PC1 (",round(eig_val$variance.percent[1], 2),"%)", sep = ""),
+       y= paste("PC2 (",round(eig_val$variance.percent[2], 2),"%)", sep = ""))+
+  guides(size = "none") +
+  theme_bw()
+
+```
+
+PCA analysis confirmed that differences between diets are not the primary source of variability in the dataset, being the second PC the most associated with diet differences (14.78% of variance explained by this PC). Additional metadata is required to evaluate other associations driving most of the variability in the dataset (i.e. PC1).
+
+```{r}
+temp <- exp_mat
+
+#Top 1000 variable
+index <- which( rownames(temp) %in% names(sort(apply(X = temp, MARGIN = 1, var), decreasing = TRUE)[1:1000]))
+temp <- temp[index,]
+
+PCs <- prcomp(t(cpm(temp)), center = TRUE, scale = TRUE)
+# Scree plot 
+fviz_eig(PCs)
+# Scatter plot
+eig_val <- get_eigenvalue(PCs)
+PCs <- cbind(annot, PCs$x[,1:10])
+PCs$sample_id <- rownames(PCs)
+
+PCs <- PCs %>%
+  mutate(color_class = case_when(
+    condition == "Ctrl" ~ "blue",
+    condition == "GEN9" ~ "red",
+    condition == "H2O2" ~ "darkgreen",
+    condition == "PNS2" ~ "purple",
+    condition == "PTS3" ~ "pink")) 
+
+PCs %>%
+  ggplot(aes(x = PC1, y = PC2, 
+             color = Diet)) + 
+  geom_point(aes(size = 8)) + 
+  scale_color_manual(values = PCs$color_class, 
+                     breaks = PCs$Diet) +
+  labs(x= paste("PC1 (",round(eig_val$variance.percent[1], 2),"%)", sep = ""),
+       y= paste("PC2 (",round(eig_val$variance.percent[2], 2),"%)", sep = ""))+
+  guides(size = "none") +
+  theme_bw()
+
+```
+
+```{r}
+# Heatmap            
+temp %>%
+  cor() %>%
+  pheatmap(annotation_col = annot,
+           annotation_row = annot,
+           show_rownames = FALSE, 
+           annotation_colors = annot_colors, 
+           angle_col = 45)
+
+```
+
+
+## EDA conclusions
+
+Initial visualization of gene counts suggested sample **RSV_14** to be an outlier due to a different distribution of reads, however, this difference was ameliorated when removing lowly expressed genes and normalizing by library size. It was not possible to cluster samples by dietary conditions using raw counts nor CPM counts; sample correlation resulted in an apparently random clustering. While PCA analysis indicated a separation between diet conditions along the second principal component. The clustering within samples of the same diet group was improved when using a combination of VST counts, and a subset of the top 100 variable genes. Together, our results suggest that differences between diets account for a limited amount of variability in the data, while most could be influenced by unknown sources of variability within diet groups. It is also possible that differences between diet groups could be limited to very few genes.
