@@ -7,22 +7,14 @@ output: github_document
 
 ```{r setup, include=FALSE}
 # Differential expression tools
-library(DESeq2)
 library(edgeR)
 # Data format and ID conversion
 library(data.table)
 library(tidyverse)
-library(biomaRt)
-# library(plyr)
 # Plot generation 
 library(ggplot2)
 library(factoextra)
 library(pheatmap)
-library(EnhancedVolcano)
-# Gene set enrichment analysis
-library(fgsea)
-library(reactome.db)
-library(org.Rn.eg.db)
 
 data_path <- "~/GitHub/RNAseq_PECs/data"
 
@@ -32,15 +24,15 @@ theme_set(theme_bw())
 
 # Exploratory Data Analysis
 
-The goal is to evaluate
+The goal is to explore if:
 
-If there are any outlier samples
-Overall count distributions are similar across all samples
-Gene expression variability aligns with experimental conditions
+-   Are there any outlier samples?
 
+-   Are the count distributions are similar across all samples?
+
+-   Do gene expression variability aligns with experimental conditions?
 
 ## Count distribution
-
 
 ```{r read data}
 # Read count table
@@ -51,6 +43,7 @@ count_df <- read.table(file.path(data_path, "Salmon_EstCount_ENSG.tsv"),
 count_df %>%
   head()
 ```
+
 By looking at the density plots of the expression data it is possible to determine if any sample is a clear outlier.
 
 ```{r}
@@ -84,15 +77,14 @@ temp %>%
                      breaks = temp$name) 
 
 ```
-We can observe that one control sample and one sample from the Gen9 group have slightly more counts than other samples.
 
+We can observe that one control sample and one sample from the Gen9 group have slightly more counts than other samples.
 
 ### Filter lowly expressed genes
 
 To increase data quality we removed lowly expressed genes in two steps:
 
 1.  Removed genes with no counts across all samples.
-
 
 ```{r Filter no exp genes}
 # Remove columns with gene information 
@@ -105,13 +97,12 @@ exp_mat <- exp_mat[!(rowSums(exp_mat == 0) == ncol(exp_mat)),]
 
 2.  Removed genes with less than two reads in more than 12 samples.
 
-
 ```{r filter lowly exp genes}
 # We use the average 1st quartile as threshold (2.1), round down to 2
 # floor(mean(apply(exp_mat, MARGIN = 2, quantile, 0.25)))
 
 # Select genes to keep
-min_reads <- 2
+min_reads <- 1
 min_samples <- 12
 genes_to_keep <- apply(exp_mat >= min_reads, 
                        MARGIN = 1, sum) > min_samples
@@ -132,8 +123,6 @@ exp_mat %>%
     scale_x_continuous(trans = 'log10', labels = scales::comma)
 
 ```
-
-
 
 ```{r}
 temp <- exp_mat %>%
@@ -245,8 +234,7 @@ expr_log2cpm %>%
 
 ```
 
-
-### Principal Component Analysis (PCA) analysis
+### Principal Component Analysis (PCA)
 
 Another way of determining relationship between the samples is through a PCA analysis, which reduces the dimentionality of our data to a set of independent variables (principal components) that represent the major proportion of variability in our data.
 
@@ -281,7 +269,9 @@ PCs %>%
 
 ```
 
-PCA analysis confirmed that differences between diets are not the primary source of variability in the dataset, being the second PC the most associated with diet differences (14.78% of variance explained by this PC). Additional metadata is required to evaluate other associations driving most of the variability in the dataset (i.e. PC1).
+#### Clustering and PCA on top variable genes
+
+For scenarios where experimental variability is expected to be low, it is worth looking at genes with the highest overall variability. If we expect a few differentially expressed genes, the signal is likely to get lost among many genes with no expression changes.
 
 ```{r}
 temp <- exp_mat
@@ -330,8 +320,3 @@ temp %>%
            angle_col = 45)
 
 ```
-
-
-## EDA conclusions
-
-Initial visualization of gene counts suggested sample **RSV_14** to be an outlier due to a different distribution of reads, however, this difference was ameliorated when removing lowly expressed genes and normalizing by library size. It was not possible to cluster samples by dietary conditions using raw counts nor CPM counts; sample correlation resulted in an apparently random clustering. While PCA analysis indicated a separation between diet conditions along the second principal component. The clustering within samples of the same diet group was improved when using a combination of VST counts, and a subset of the top 100 variable genes. Together, our results suggest that differences between diets account for a limited amount of variability in the data, while most could be influenced by unknown sources of variability within diet groups. It is also possible that differences between diet groups could be limited to very few genes.
