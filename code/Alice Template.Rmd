@@ -8,6 +8,7 @@ output: github_document
 ```{r setup, include=FALSE}
 # Differential expression tools
 library(DESeq2)
+library(edgeR)
 # Data format and ID conversion
 library(data.table)
 library(tidyverse)
@@ -25,7 +26,6 @@ library(EnhancedVolcano)
 knitr::opts_chunk$set(echo = TRUE)
 theme_set(theme_bw())
 ```
-
 
 # Exploratory Data Analysis
 
@@ -146,7 +146,7 @@ exp_mat <- exp_mat[!(rowSums(exp_mat == 0) == ncol(exp_mat)),]
 # floor(mean(apply(exp_mat, MARGIN = 2, quantile, 0.25)))
 
 # Select genes to keep
-min_reads <- 2
+min_reads <- 1
 min_samples <- 5
 genes_to_keep <- apply(exp_mat >= min_reads,
                        MARGIN = 1, sum) > min_samples
@@ -210,7 +210,10 @@ Before proceeding to further analysis we need to normalize the gene counts, we w
 ```{r cpm norm}
 
 # CPM normalization and transform to log2
-expr_log2cpm <- cpm(exp_mat, log = TRUE, prior.count = 1) %>% 
+
+expr_log2cpm <- cpm(exp_mat, 
+                    log = TRUE, 
+                    prior.count = 1) %>% 
   data.frame() 
 
 expr_log2cpm %>%
