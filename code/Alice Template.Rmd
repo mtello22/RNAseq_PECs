@@ -147,7 +147,7 @@ exp_mat <- exp_mat[!(rowSums(exp_mat == 0) == ncol(exp_mat)),]
 
 # Select genes to keep
 min_reads <- 1
-min_samples <- 5
+min_samples <- 12
 genes_to_keep <- apply(exp_mat >= min_reads,
                        MARGIN = 1, sum) > min_samples
 
