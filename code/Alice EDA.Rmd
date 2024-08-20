@@ -1,6 +1,6 @@
 ---
 title: "EDA"
-author: "Marco Tello"
+author: "Alice"
 date: "2024-02-22"
 output: github_document
 ---
@@ -57,7 +57,7 @@ count_df %>%
 
 
 ```
-```{r}
+```{r Gene expression density plots}
 temp <- count_df %>%
   pivot_longer(!ENSG) %>%
   mutate(condition = str_replace(string = name, 
@@ -80,47 +80,9 @@ temp %>%
 ```
 
 
-
-```{r Gene expression density plots, warning=FALSE}
-
-count_df %>%
-  pivot_longer(ENSG) 
-
-
-  dplyr::select(!GeneSymbol) %>%
-  ggplot(aes(x=value, color = name ))+
-    geom_density() +
-    scale_x_continuous(trans = 'log10') +
-    labs(title = "Gene expression density plot")
-
-temp <- count_df %>%
-  dplyr::select(!ENSEMBLID) %>%
-  dplyr::select(!Length) %>%
-  pivot_longer(!GeneSymbol) %>%
-  dplyr::select(!GeneSymbol) %>%
-  mutate(condition = str_replace(string = name, 
-                                 pattern = "_\\d+", 
-                                 replacement = "")) %>%
-  mutate(condition = case_when(
-    condition == "CSAA" ~ "blue",
-    condition == "PTS" ~ "red",
-    condition == "CGA" ~ "darkgreen",
-    condition == "RSV" ~ "purple")) 
-  
-
-temp %>%
-  ggplot(aes(x=value, color= name))+
-  geom_density() +
-  scale_x_continuous(trans = 'log10', labels = scales::comma) +
-  scale_color_manual(values = temp$condition, 
-                     breaks = temp$name) +
-  labs(title = "Gene expression density plot by diet")
-
-
-
 ```
 
-We initially observed one sample that do not completely follow the distribution of counts as the others. Thus we colored them by diet group so we could identify which diet group it belongs. In this way, we flagged sample **RSV_14** as an outlier with a different distribution of counts compared to other samples. The next step is to remove lowly expressed genes and check if the density plots improve.
+We initially observed two sample in Ctrl and GEN9 that do not completely follow the distribution of counts as the others. Thus we flagged these 2 samples as outlier with a different distribution of counts compared to other samples. The next step is to remove lowly expressed genes and check if the density plots improve.
 
 ### Filter lowly expressed genes
 
@@ -155,49 +117,6 @@ genes_to_keep <- apply(exp_mat >= min_reads,
 exp_mat <- exp_mat[genes_to_keep,]
 
 ```
-```{r}
-
-```
-
-
-`
-
-
-
-```{r warning=FALSE}
-exp_mat %>%
-    rownames_to_column(var = "GeneSymbol") %>%
-    pivot_longer(!GeneSymbol) %>%
-    dplyr::select(!GeneSymbol) %>%
-    ggplot(aes(x=value + 1, color = name))+
-    geom_density() +
-    scale_x_continuous(trans = 'log10', labels = scales::comma) +
-    labs(title = "Gene expression density plot by diet", 
-         x = "Expression counts + 1", 
-         y = "Density",
-         color = "Sample") +
-    theme_bw()
-
-temp <- exp_mat %>%
-  rownames_to_column(var = "GeneSymbol") %>%
-  pivot_longer(!GeneSymbol) %>%
-  dplyr::select(!GeneSymbol) %>%
-  mutate(condition = str_replace(string = name, 
-                                 pattern = "_\\d+", 
-                                 replacement = "")) %>%
-  mutate(condition = case_when(
-    condition == "CSAA" ~ "blue",
-    condition == "PTS" ~ "red",
-    condition == "CGA" ~ "darkgreen",
-    condition == "RSV" ~ "purple")) 
-
-temp %>%
-  ggplot(aes(x=value, color= name))+
-  geom_density() +
-  scale_x_continuous(trans = 'log1p') +
-  scale_color_manual(values = temp$condition, 
-                     breaks = temp$name) +
-  labs(title = "Gene expression density plot by diet")
 
 ```
 
@@ -223,20 +142,6 @@ expr_log2cpm %>%
   ggplot(aes(x=value, color= name))+
   geom_density() 
 
-```
-
-
-```{r cpm norm}
-# CPM normalization and transform to log2
-expr_log2cpm <- cpm(exp_mat, log = TRUE, prior.count = 1) %>% 
-  data.frame() 
-
-expr_log2cpm %>%
-  rownames_to_column(var = "GeneSymbol") %>%
-  pivot_longer(!GeneSymbol) %>%
-  dplyr::select(!GeneSymbol) %>%
-  ggplot(aes(x=value, color= name))+
-  geom_density() 
 ```
 
 ### Violin plots
@@ -267,37 +172,13 @@ temp %>%
   theme(axis.text.x = element_text(angle = 45, hjust=1))
 ```
 
-
-```{r violin plot}
-
-temp <- expr_log2cpm %>%
-  rownames_to_column(var="GeneSymbol") %>%
-  pivot_longer(!GeneSymbol) %>%
-  dplyr::select(!GeneSymbol) %>%
-  mutate(condition = str_replace(string = name, 
-                                 pattern = "_\\d+", 
-                                 replacement = "")) 
-# Convert condition to factor 
-temp <- temp %>%
-  mutate(condition = factor(condition, levels = c("Ctrl", "PTS", "CGA", "RSV")))
-
-# Plot using ggplot with correct fill mapping
-temp %>%
-  ggplot(aes(x=name, y=value, fill = condition)) +
-  geom_violin()+
-  scale_fill_manual(values = c("CSAA" = "blue", 
-                               "PTS" = "red", 
-                               "CGA" = "darkgreen", 
-                               "RSV" = "purple")) +
-  theme(axis.text.x = element_text(angle = 45, hjust=1))
-
 ```
 
-In this way we can easily identify that sample  **RSV_14** has a different distribution, with a lower proportion of genes with low log2CPM values
+In this way we can easily identify that sample  **Ctrl_1**  and **GEN9_3** has a different distribution, with a higherproportion of genes with high log2CPM values
 
 ### Sample-sample correlation plot
 
-Using normalized counts we generated a plot to observe if there is correlation within diet groups which would group the samples accordingly.
+Using normalized counts we generated a plot to observe if there is correlation within condition groups which would group the samples accordingly.
 
 ```{r}
 # Annotation
@@ -330,7 +211,11 @@ expr_log2cpm %>%
 
 ```
 
-In this case, the samples did not cluster by diet. The next step is to perform a principal component analysis to further investigate this low correlation within diet groups.
+For the heatmap, one sample from the Ctrl group does not seem to cluster with the other two samples. I wonder if there is a solution to fix it and if it is going to impact the downstream analysis.
+
+Other than that, I think the samples in most conditions are nicely correlated, meaning that no intragroup variability. Except for GEN9, the correlation seems weaker.
+
+The next step is to perform a principal component analysis to further investigate this low correlation within condition groups.
 
 
 ```
@@ -367,9 +252,14 @@ PCs %>%
        y= paste("PC2 (",round(eig_val$variance.percent[2], 2),"%)", sep = ""))+
   guides(size = "none") +
   theme_bw()
+  
 ```
 
-PCA analysis confirmed that differences between diets are not the primary source of variability in the dataset, being the second PC the most associated with diet differernces (14.78% of variance explained by this PC). Additional metadata is required to evaluate other associations driving most of the variability in the dataset (i.e. PC1).
+For the PCA plot, I could identify 2 outliers from the Ctrl and GEN9 groups (as what we expected in the gene expression density plot).Additional metadata is required to evaluate other associations driving most of the variability in the dataset (i.e. PC1).
+
+Interestingly, although the dots are clustered they do not seem to differ much on the x-axis but differ more on the y-axis. 
+
+Next, I generated another plot based on PC2 and PC3, they looked more separated from each other
 
 
 ```{r}
@@ -407,6 +297,16 @@ PCs %>%
   guides(size = "none") 
 
 ```
+It is likely that combined explain the expression variability associated with the experimental conditions (7% + 19.8%). The first PC could be associated with the exposure to H2O2, which we expect will induce most of the expression variability in the dataset.
+
+
+## EDA conclusions
+Initial visualization of gene counts suggested sample **Ctrl_1** and **GEN0_3** to be outliers due to higher reads.  Sample correlation resulted in clustering by each condition (weaker correaltion in Ctrl and GEN9 but still ~0.9).
+
+PCA analysis indicated a separation between conditions along the second principal component. 
+Ctrl and PNS2 have more similarities with each other compared to other experimental conditions, while GEN9 showed furthest from the Ctrl condition. On the same line, PTS3 was the least effective of the treatments since the expression is more similar to the H2O2 group.
+
+VST counts has not yet been conducted as clustering has shown in the initial EDA.
 
 
 ## Variance stabilized counts visualization.
@@ -422,9 +322,9 @@ expr_vst <- vst(object = as.matrix(sapply(exp_mat, as.integer))) %>%
 ```{r vst density, warning=FALSE}
 
 expr_vst %>%
-  rownames_to_column(var = "GeneSymbol") %>%
-  pivot_longer(!GeneSymbol) %>%
-  dplyr::select(!GeneSymbol) %>%
+  rownames_to_column(var = "ENSG") %>%
+  pivot_longer(!ENSG) %>%
+  dplyr::select(!ENSG) %>%
     ggplot(aes(x=value + 1, color = name))+
     geom_density() +
     scale_x_continuous(trans = 'log10', labels = scales::comma) +
@@ -436,8 +336,8 @@ expr_vst %>%
     theme_bw()
 
 temp <- expr_vst %>%
-  rownames_to_column(var = "GeneSymbol") %>%
-  pivot_longer(!GeneSymbol) %>%
+  rownames_to_column(var = "ENSG") %>%
+  pivot_longer(!ENSG) %>%
   mutate(condition = str_replace(string = name, 
                                  pattern = ".\\d+", 
                                  replacement = "")) %>%
@@ -445,17 +345,19 @@ temp <- expr_vst %>%
                                  pattern = "_\\d{6}.\\d+", 
                                  replacement = "")) %>%
   mutate(condition = case_when(
-    condition == "CSAA" ~ "blue",
-    condition == "PTS" ~ "red",
-    condition == "CGA" ~ "darkgreen",
-    condition == "RSV" ~ "purple")) %>% 
-  dplyr::select(!GeneSymbol) 
+    condition == "Ctrl" ~ "blue",
+    condition == "GEN9" ~ "red",
+    condition == "H2O2" ~ "darkgreen",
+    condition == "PNS2" ~ "purple",
+    condition == "PTS3" ~ "pink")) %>% 
+  dplyr::select(!ENSG) 
 
 temp %>%
   ggplot(aes(x=value, color= name))+
   geom_density() +
-  scale_color_manual(values=temp$condition, breaks = temp$name) +
   scale_x_continuous(trans = 'log10', labels = scales::comma) +
+  scale_color_manual(values = temp$condition, 
+                     breaks = temp$name) 
   labs(x = "VST")
 ```
 
@@ -468,23 +370,24 @@ This can also be appreciated using violin plots for representing the VST counts 
 ```{r vst violin}
 
 temp <- expr_vst %>%
-  rownames_to_column(var="GeneSymbol") %>%
-  pivot_longer(!GeneSymbol) %>%
-  mutate(Diet = str_replace(string = name, 
+  rownames_to_column(var="ENSG") %>%
+  pivot_longer(!ENSG) %>%
+  mutate(condition = str_replace(string = name, 
                             pattern = "_\\d+", 
                             replacement = "")) %>%
   mutate(color_class = case_when(
-    Diet == "CSAA" ~ "blue",
-    Diet == "PTS" ~ "red",
-    Diet == "CGA" ~ "darkgreen",
-    Diet == "RSV" ~ "purple")) %>% 
-  dplyr::select(!GeneSymbol) 
+    condition == "Ctrl" ~ "blue",
+    condition == "GEN9" ~ "red",
+    condition == "H2O2" ~ "darkgreen",
+    condition == "PNS2" ~ "purple",
+    condition == "PTS3" ~ "pink")) %>%
+  dplyr::select(!ENSG) 
 
 temp %>%
-  ggplot(aes(x=name, y=value, fill = Diet)) +
+  ggplot(aes(x=name, y=value, fill = condition)) +
   geom_violin()+
   theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-  scale_fill_manual(values= c("darkgreen", "blue", "red", "purple")) 
+  scale_fill_manual(values= c("blue","red","darkgreen", "purple","pink")) 
 
 ```
 
@@ -498,13 +401,14 @@ condition <- names(expr_vst) %>%
   str_replace(pattern = "_\\d+", 
               replacement = "")
 
-annot <- data.frame(Diet = as.factor(condition),
+annot <- data.frame(condition = as.factor(condition),
                     row.names = names(expr_log2cpm))
 
-annot_colors <- list(Diet = c(CSAA = "blue", 
-                              PTS = "red",
-                              CGA = "darkgreen",
-                              RSV = "purple"))
+annot_colors <- list(condition = c("Ctrl" = "blue", 
+                               "GEN9" = "red", 
+                               "H2O2" = "darkgreen", 
+                               "PNS2" = "purple",
+                               "PTS3" = "pink"))
 
 # Heatmap            
 expr_vst %>%
@@ -559,7 +463,7 @@ condition <- names(temp) %>%
   str_replace(pattern = "_\\d+", 
               replacement = "")
 
-annot <- data.frame(Diet = as.factor(condition),
+annot <- data.frame(condition = as.factor(condition),
                     row.names = names(temp))
 
 
@@ -573,27 +477,22 @@ PCs <- cbind(annot, PCs$x[,1:10])
 PCs$sample_id <- str_extract(string = rownames(PCs), pattern = "\\d+")
 
 
-PCs <- PCs %>% 
+PCs <- PCs %>%
   mutate(color_class = case_when(
-    Diet == "CSAA" ~ "blue",
-    Diet == "PTS" ~ "red",
-    Diet == "CGA" ~ "darkgreen",
-    Diet == "RSV" ~ "purple")) 
+    condition == "Ctrl" ~ "blue",
+    condition == "GEN9" ~ "red",
+    condition == "H2O2" ~ "darkgreen",
+    condition == "PNS2" ~ "purple",
+    condition == "PTS3" ~ "pink")) 
 
 PCs %>%
-  ggplot(aes(x = PC1, y = PC2, color = Diet)) + 
+  ggplot(aes(x = PC1, y = PC2, color = condition)) + 
   geom_point(aes(size = 8))+
   scale_color_manual(values = PCs$color_class, 
-                     breaks = PCs$Diet) +
+                     breaks = PCs$condition) +
   labs(x= paste("PC1 (",round(eig_val$variance.percent[1], 2),"%)", sep = ""),
        y= paste("PC2 (",round(eig_val$variance.percent[2], 2),"%)", sep = ""))+
   guides(size = "none") 
 
 ```
-Using VST counts showed a clear separation along the second PC between CSAA and CSAA + PTS diets. Suggesting that a low 
-
-
-## EDA conclusions
-
-Initial visualization of gene counts suggested sample **RSV_14** to be an outlier due to a different distribution of reads, however, this difference was ameliorated when removing lowly expressed genes and normalizing by library size. It was not possible to cluster samples by dietary conditions using raw counts nor CPM counts; sample correlation resulted in an apparently random clustering. While PCA analysis indicated a separation between diet conditions along the second principal component. 
-The clustering within samples of the same diet group was improved when using a combination of VST counts, and a subset of the top 100 variable genes. Together, our results suggest that differences between diets account for a limited amount of variability in the data, while most could be influenced by unknown sources of variability within diet groups. It is also possible that differences between diet groups could be limited to very few genes.
+Using VST counts showed a clear separation along the second PC between CSAA and CSAA + PTS condition Suggesting that a low 
