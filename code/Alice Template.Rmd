@@ -68,7 +68,7 @@ temp <- count_df %>%
     condition == "GEN9" ~ "red",
     condition == "H2O2" ~ "darkgreen",
     condition == "PNS2" ~ "purple",
-    condition == "PNS3" ~ "pink")) 
+    condition == "PTS3" ~ "pink")) 
 
 temp %>%
   ggplot(aes(x=value, color = name))+
@@ -146,8 +146,8 @@ exp_mat <- exp_mat[!(rowSums(exp_mat == 0) == ncol(exp_mat)),]
 # floor(mean(apply(exp_mat, MARGIN = 2, quantile, 0.25)))
 
 # Select genes to keep
-min_reads <- 1
-min_samples <- 12
+min_reads <- 5
+min_samples <- 8
 genes_to_keep <- apply(exp_mat >= min_reads,
                        MARGIN = 1, sum) > min_samples
 
@@ -279,7 +279,7 @@ temp <- expr_log2cpm %>%
                                  replacement = "")) 
 # Convert condition to factor 
 temp <- temp %>%
-  mutate(condition = factor(condition, levels = c("CSAA", "PTS", "CGA", "RSV")))
+  mutate(condition = factor(condition, levels = c("Ctrl", "PTS", "CGA", "RSV")))
 
 # Plot using ggplot with correct fill mapping
 temp %>%
@@ -299,7 +299,7 @@ In this way we can easily identify that sample  **RSV_14** has a different distr
 
 Using normalized counts we generated a plot to observe if there is correlation within diet groups which would group the samples accordingly.
 
-```{r sample-sample}
+```{r}
 # Annotation
 
 # Standardize conditon names
@@ -307,13 +307,14 @@ condition <- names(expr_log2cpm) %>%
   str_replace(pattern = "_\\d+", 
               replacement = "")
 
-annot <- data.frame(Diet = as.factor(condition),
+annot <- data.frame(condition = as.factor(condition),
                     row.names = names(expr_log2cpm))
 
-annot_colors <- list(Diet = c(CSAA = "blue", 
-                              PTS = "red",
-                              CGA = "darkgreen",
-                              RSV = "purple"))
+annot_colors <- list(condition = c("Ctrl" = "blue", 
+                               "GEN9" = "red", 
+                               "H2O2" = "darkgreen", 
+                               "PNS2" = "purple",
+                               "PTS3" = "pink"))
 
 # Heatmap            
 expr_log2cpm %>%
@@ -324,10 +325,15 @@ expr_log2cpm %>%
            annotation_colors = annot_colors, 
            angle_col = 45)
 
+```
+
 
 ```
 
 In this case, the samples did not cluster by diet. The next step is to perform a principal component analysis to further investigate this low correlation within diet groups.
+
+
+```
 
 ### Principal Component Analysis (PCA) analysis
 
@@ -345,29 +351,29 @@ PCs$sample_id <- rownames(PCs)
 
 PCs <- PCs %>%
   mutate(color_class = case_when(
-    Diet == "CSAA" ~ "blue",
-    Diet == "PTS" ~ "red",
-    Diet == "CGA" ~ "darkgreen",
-    Diet == "RSV" ~ "purple")) 
+    condition == "Ctrl" ~ "blue",
+    condition == "GEN9" ~ "red",
+    condition == "H2O2" ~ "darkgreen",
+    condition == "PNS2" ~ "purple",
+    condition == "PTS3" ~ "pink")) 
 
 PCs %>%
   ggplot(aes(x = PC1, y = PC2, 
-             color = Diet)) + 
+             color = condition)) + 
   geom_point(aes(size = 8)) + 
   scale_color_manual(values = PCs$color_class, 
-                     breaks = PCs$Diet) +
+                     breaks = PCs$condition) +
   labs(x= paste("PC1 (",round(eig_val$variance.percent[1], 2),"%)", sep = ""),
        y= paste("PC2 (",round(eig_val$variance.percent[2], 2),"%)", sep = ""))+
   guides(size = "none") +
   theme_bw()
-
 ```
 
 PCA analysis confirmed that differences between diets are not the primary source of variability in the dataset, being the second PC the most associated with diet differernces (14.78% of variance explained by this PC). Additional metadata is required to evaluate other associations driving most of the variability in the dataset (i.e. PC1).
 
 
 ```{r}
-temp <- exp_mat[, c(1:5,10:14)]
+temp <- exp_mat[, c(1:3,4:6,7:9,10:12,13:15)]
 
 #Top 1000 variable
 # index <- which( rownames(temp) %in% names(sort(apply(X = temp, MARGIN = 1, var), decreasing = TRUE)[1:1000]))
@@ -378,21 +384,24 @@ PCs <- prcomp(t(cpm(temp)), center = TRUE, scale = TRUE)
 fviz_eig(PCs)
 # Scatter plot
 eig_val <- get_eigenvalue(PCs)
-PCs <- as.data.table(PCs$x[,1:10])
-PCs$Diet <- as.data.table(annot, keep.rownames = TRUE)[Diet %in% c("CSAA", "PTS"), "Diet"]
-PCs$sample_id <- as.data.table(annot, keep.rownames = TRUE)[Diet %in% c("CSAA", "PTS"), "rn"]
+PCs <- as.data.table(PCs$x[,1:15])
+PCs$condition <- as.data.table(annot, keep.rownames = TRUE)[condition %in% c("Ctrl", "GEN9","H2O2","PNS2","PTS3"), "condition"]
+PCs$sample_id <- as.data.table(annot, keep.rownames = TRUE)[condition %in% c("Ctrl", "GEN9","H2O2","PNS2","PTS3"), "rn"]
 
 PCs <- PCs %>%
   mutate(color_class = case_when(
-    Diet == "CSAA" ~ "blue",
-    Diet == "PTS" ~ "red")) 
+    condition == "Ctrl" ~ "blue",
+    condition == "GEN9" ~ "red",
+    condition == "H2O2" ~ "darkgreen",
+    condition == "PNS2" ~ "purple",
+    condition == "PTS3" ~ "pink"))
 
 PCs %>%
   ggplot(aes(x = PC2, y = PC3, 
-             color = Diet)) + 
+             color = condition)) + 
   geom_point(aes(size = 8)) + 
   scale_color_manual(values = PCs$color_class, 
-                     breaks = PCs$Diet) +
+                     breaks = PCs$condition) +
   labs(x= paste("PC2 (",round(eig_val$variance.percent[2], 2),"%)", sep = ""),
        y= paste("PC3 (",round(eig_val$variance.percent[3], 2),"%)", sep = ""))+
   guides(size = "none") 

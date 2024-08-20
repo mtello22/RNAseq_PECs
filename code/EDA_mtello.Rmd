@@ -258,10 +258,10 @@ PCs <- PCs %>%
 
 PCs %>%
   ggplot(aes(x = PC1, y = PC2, 
-             color = Diet)) + 
+             color = condition)) + 
   geom_point(aes(size = 8)) + 
   scale_color_manual(values = PCs$color_class, 
-                     breaks = PCs$Diet) +
+                     breaks = PCs$condition) +
   labs(x= paste("PC1 (",round(eig_val$variance.percent[1], 2),"%)", sep = ""),
        y= paste("PC2 (",round(eig_val$variance.percent[2], 2),"%)", sep = ""))+
   guides(size = "none") +
