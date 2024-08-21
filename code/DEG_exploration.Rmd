@@ -190,11 +190,6 @@ temp <- degs[ENSG %in% candidate_genes, .SD, .SDcols = c("ENSG", "log2FoldChange
 
 temp <- dcast(temp, ENSG ~ Group, value.var = "log2FoldChange")
 
-temp[, H2O2_Vs_Ctrl + .SD, .SDcols = c("GEN9_vs_H2O2", "PNS2_vs_H2O2", "PTS3_vs_H2O2"), by = "ENSG"]
+head(temp)
+head(temp[, H2O2_Vs_Ctrl + .SD, .SDcols = c("GEN9_vs_H2O2", "PNS2_vs_H2O2", "PTS3_vs_H2O2"), by = "ENSG"])
 ```
-
-
-
-
-
-
