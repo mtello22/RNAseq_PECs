@@ -192,4 +192,36 @@ temp <- dcast(temp, ENSG ~ Group, value.var = "log2FoldChange")
 
 head(temp)
 head(temp[, H2O2_Vs_Ctrl + .SD, .SDcols = c("GEN9_vs_H2O2", "PNS2_vs_H2O2", "PTS3_vs_H2O2"), by = "ENSG"])
+
+
 ```
+
+
+```{r}
+# Load required libraries
+library(data.table)
+library(ggplot2)
+library(pheatmap)
+
+# Assuming degs is a data.table, and candidate_genes is a vector of gene IDs (ENSG)
+temp <- degs[ENSG %in% candidate_genes, .SD, .SDcols = c("ENSG", "log2FoldChange", "Group")]
+
+# Reshape the data from long to wide format
+temp <- dcast(temp, ENSG ~ Group, value.var = "log2FoldChange")
+
+# Select specific columns for the heatmap if needed
+selected_temp <- temp[, .SD, .SDcols = c("H2O2_Vs_Ctrl","GEN9_vs_H2O2", "PNS2_vs_H2O2", "PTS3_vs_H2O2")]
+
+# Set row names to ENSG
+row.names(selected_temp) <- temp$ENSG
+
+# Adjust the size of the heatmap and rotate x-axis labels to horizontal
+pheatmap(selected_temp, 
+         cluster_rows = TRUE, 
+         cluster_cols = TRUE, 
+         display_numbers = FALSE,  # Remove the log2FoldChange values from the cells
+         color = colorRampPalette(c("blue", "white", "red"))(50),
+         main = "Heatmap of Inverse Gene Expression Patterns",
+         angle_col = 0)
+```
+
