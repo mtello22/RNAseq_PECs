@@ -233,3 +233,242 @@ for(combination in c("1101","0111","1100","0110")){
 }
 candidate_genes
 ```
+
+## Determine if genes reverted expression change
+
+We start with the most simple scenario where any gene that showed a change of expression in H2O2 vs Control AND Treatment vs H2O2 is considered for the analysis.
+
+
+```{r}
+
+temp <- degs[ensembl_gene_id_version %in% candidate_genes, .SD, .SDcols = c("external_gene_name", "log2FoldChange", "Group")]
+temp <- dcast(temp, external_gene_name ~ Group, 
+              value.var = "log2FoldChange", 
+              fill = NA)
+setorder(temp, -H2O2_Vs_Ctrl)
+
+delta_FC <- temp[, .(external_gene_name, (.SD * 100)/H2O2_Vs_Ctrl), 
+             .SDcols = c("GEN9_vs_H2O2", "PNS2_vs_H2O2", "PTS3_vs_H2O2")]
+
+delta_FC <- melt(delta_FC, 
+                 id.vars = "external_gene_name", 
+                 variable.name = "Group", 
+                 value.name = "log2FC")
+delta_FC[, Recovered := ifelse(log2FC > 100, "Opposite", NA)]
+delta_FC[, log2FC := ifelse(log2FC < 0, 
+                              (log2FC - 100) * -1, 
+                              ifelse(log2FC < 100, 
+                                      100 - log2FC, 
+                                      log2FC))]
+delta_FC[, Group := factor(Group, levels = c("GEN9_vs_H2O2", "PNS2_vs_H2O2", "PTS3_vs_H2O2"))]
+delta_FC[, Recovered := ifelse(log2FC < 100, "No", ifelse(is.na(Recovered), "Yes", Recovered))]
+
+
+setkeyv(degs, c("external_gene_name", "Group"))
+temp <- degs[delta_FC[, .SD, 
+                      .SDcols = c("external_gene_name", "Group")], 
+             .(external_gene_name, Group, DEG = ifelse(padj < alpha, 
+                                         TRUE, FALSE))]
+temp[, DEG := ifelse(is.na(DEG), FALSE, DEG)]
+delta_FC <- merge.data.table(x = delta_FC, y = temp, by = c("external_gene_name", "Group"))
+delta_FC[, Category := ifelse(Recovered == "Yes" & DEG, 
+                                "Restored", 
+                                ifelse(Recovered == "No" & DEG, 
+                                        "Partially restored", 
+                                        ifelse(Recovered == "Opposite" & DEG, 
+                                                "Amplified",
+                                                "Not sig")))]
+delta_FC[, Category := factor(Category, levels = c("Restored", "Partially restored", "Amplified", "Not sig"))]
+delta_FC[Category == "Amplified", log2FC := -1 * log2FC]
+
+
+```
+
+
+
+```{r}
+ggplot(na.omit(delta_FC), 
+       aes(y = external_gene_name, x = log2FC, fill = Category)) +
+  geom_bar(stat = "identity", color = "black", position = position_dodge()) + 
+  geom_vline(xintercept = c(100, -100), colour = "red", linetype = "dashed")+
+  scale_fill_manual(values = c("green", "blue", "red","white")) +
+  theme_bw() +
+  facet_grid(~Group) +
+  labs(x = "Recovered expression", y = NULL)
+```
+
+
+```{r, message=FALSE}
+
+candidate_exp <- vst_counts[ensembl_gene_id_version %in% candidate_genes]
+candidate_exp[, ensembl_gene_id_version := NULL]
+candidate_exp[, entrezgene_id := NULL]
+candidate_exp <- melt(candidate_exp, 
+                      id.vars = "external_gene_name", 
+                      variable.name = "Group", 
+                      value.name = "ExpCount")
+
+candidate_exp[, Group := str_replace(Group, "_[1-3]", "")]
+candidate_exp[, Group := factor(Group, 
+                                levels = c("Ctrl", "H2O2", 
+                                           "GEN9", "PNS2", 
+                                           "PTS3"))]
+
+ggplot(candidate_exp[external_gene_name == "CXCL14"], aes( x = external_gene_name, y = ExpCount, group = Group)) +
+  geom_boxplot() +
+  geom_dotplot(aes(fill = Group), position = position_dodge2(), 
+               binaxis = "y", stackdir = "center", dotsize = 1)
+
+```
+
+
+
+
+```{r}
+
+candidate_exp <- candidate_exp[, .(mean_exp = mean(ExpCount)), by = c("external_gene_name", "Group")]
+setkey(candidate_exp, "external_gene_name")
+
+
+temp <- dcast(candidate_exp, external_gene_name ~ Group, value.var = "mean_exp")
+
+temp <- temp[, .(baseline = H2O2 - Ctrl, 
+                 DGEN9 = H2O2 - GEN9, 
+                 DPNS2 = H2O2 - PNS2, 
+                 DPTS3 = H2O2 - PTS3), 
+             by = external_gene_name]
+temp <- temp[, .(GEN9_vs_H2O2 = round(DGEN9/baseline*100, 2),
+                 PNS2_vs_H2O2 = round(DPNS2/baseline*100, 2), 
+                 PTS3_vs_H2O2 = round(DPTS3/baseline*100, 2)), 
+             by = external_gene_name]
+temp <- melt(temp, 
+             id.vars = "external_gene_name", 
+             variable.name = "Group", 
+             value.name = "Recovery")
+temp[, Recovery := ifelse(Recovery < 0, Recovery - 100, Recovery)]
+
+
+
+
+
+setkeyv(degs, c("external_gene_name", "Group"))
+deg_status <- degs[temp[, .SD, 
+                        .SDcols = c("external_gene_name", "Group")],
+                   .(external_gene_name, 
+                     Group, 
+                     DEG = ifelse(padj < alpha, TRUE, FALSE))]
+
+temp <- merge.data.table(temp, deg_status)
+temp[, Category := ifelse(Recovery >= 100 & DEG, "Restored", 
+                          ifelse(Recovery < 100 & DEG, "Partially restored", 
+                                 ifelse(Recovery < 0 & DEG, "Amplified", ifelse(!DEG | is.na(DEG), "Not sig", "NPI"))))]
+
+temp[, Category := factor(Category, levels = c("Restored", "Partially restored", "Amplified", "Not sig"))]
+
+ggplot(na.omit(temp), 
+       aes(y = external_gene_name, 
+           x = Recovery, 
+           fill = Category)) +
+  geom_bar(stat = "identity", color = "black", 
+           position = position_dodge()) + 
+  geom_vline(xintercept = c(100, -100), 
+             colour = "red", linetype = "dashed")+
+  scale_fill_manual(values = c("green", "blue", "red","white")) +
+  theme_bw() +
+  facet_grid(~Group) +
+  labs(x = "Recovered expression", y = NULL)
+
+
+```
+
+
+
+
+```{r}
+library(biomaRt)
+
+gene_IDs <- getBM(filters= "ensembl_gene_id_version", 
+                  attributes= c("ensembl_gene_id",
+                                "ensembl_gene_id_version",
+                                "external_gene_name", 
+                                "entrezgene_id", 
+                                "entrezgene_accession"),
+                  values = delta_FC$ensembl_gene_id_version, 
+                  mart= ensembl)
+gene_IDs <- as.data.table(na.omit(gene_IDs))
+
+
+delta_FC <- merge.data.table(x = delta_FC, 
+                             y = gene_IDs[, .SD, .SDcols = c("ensembl_gene_id_version", "external_gene_name")], 
+                             by = "ensembl_gene_id_version", 
+                             all.y = FALSE)
+
+```
+
+
+
+```{r}
+library(fgsea)
+library(reactome.db)
+# H2O2_Vs_Ctrl
+temp <- degs[Group == "H2O2_Vs_Ctrl"]
+temp[, Group := NULL]
+
+gene_IDs <- getBM(filters= "ensembl_gene_id_version", 
+                  attributes= c("ensembl_gene_id",
+                                "ensembl_gene_id_version",
+                                "external_gene_name", 
+                                "entrezgene_id", 
+                                "entrezgene_accession"),
+                  values = temp$ensembl_gene_id_version, 
+                  mart= ensembl)
+gene_IDs <- as.data.table(na.omit(gene_IDs))
+temp <- merge.data.table(x = gene_IDs[, .SD, .SDcols = c("ensembl_gene_id_version", "entrezgene_id")], 
+                         y = temp,
+                         by = "ensembl_gene_id_version", 
+                         all.y = TRUE)
+
+dup_entrez <- na.omit(unique(temp$entrezgene_id[duplicated(temp$entrezgene_id)]))
+avg_stat <- na.omit(temp[(entrezgene_id %in% dup_entrez)])[, .(stat = mean(stat)), by = entrezgene_id]
+
+dDEG_PTS_nodup <- na.omit(temp[!(entrezgene_id %in% dup_entrez)])
+
+dPTS_ranks <- c(dDEG_PTS_nodup$stat, avg_stat$stat)
+names(dPTS_ranks) <- c(dDEG_PTS_nodup$entrezgene_id, avg_stat$entrezgene_id)
+dPTS_ranks <- sort(dPTS_ranks, decreasing = TRUE)
+
+# Get reactome pathways for our genes
+pathways <- reactomePathways(names(dPTS_ranks))
+
+set.seed(123)
+fgsea_dPTS <- fgsea(pathways = pathways,
+                    stats = dPTS_ranks,
+                    minSize = 15,
+                    maxSize = 500,
+                    eps = 0.0)
+
+```
+
+
+
+
+```{r PNS2}
+topPathwaysUp <- fgsea_dPTS[ES > 0 & padj < 0.05][head(order(-NES), n=10), pathway]
+topPathwaysDown <- fgsea_dPTS[ES < 0 & padj < 0.05][head(order(NES), n=10), pathway]
+topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
+plotGseaTable(pathways[topPathways], dPTS_ranks, fgsea_dPTS, 
+              gseaParam=0.5)
+```
+
+
+
+```{r H2O2}
+topPathwaysUp <- fgsea_dPTS[ES > 0 & padj < 0.05][head(order(-NES), n=10), pathway]
+topPathwaysDown <- fgsea_dPTS[ES < 0 & padj < 0.05][head(order(NES), n=10), pathway]
+topPathways <- c(topPathwaysUp, rev(topPathwaysDown))
+plotGseaTable(pathways[topPathways], dPTS_ranks, fgsea_dPTS, 
+              gseaParam=0.5)
+```
+
+
+
