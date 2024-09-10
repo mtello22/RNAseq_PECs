@@ -102,7 +102,7 @@ the H0 is true, we would expect to see an uniform distribution of
 pvalues. A peak at low zeroes indicate we reject the H0.
 
 ``` r
-temp <- visualize_degs(degs[Group == "H2O2_Vs_Ctrl"], alpha, log2FC)
+temp <- visualize_degs(degs[Group == "H2O2_Vs_Ctrl"], alpha, log2FC, top_exp = 5)
 temp[[1]]
 ```
 
@@ -112,9 +112,6 @@ we visualize the expression changes using a volcano plot.
 ``` r
 temp[[2]]
 ```
-
-    ## Warning: ggrepel: 1 unlabeled data points (too many overlaps). Consider
-    ## increasing max.overlaps
 
 ![](DEG_exploration_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
 
