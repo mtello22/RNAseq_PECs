@@ -15,37 +15,30 @@ library(ComplexHeatmap)
 custom_volcano <- function(DEG_results, alpha, log2FC){
   num_na <- sum(is.na(DEG_results$padj))
   temp <- data.table(na.omit(DEG_results))
-  temp[, alpha := ifelse(padj < alpha, TRUE, FALSE)]
-  temp[, log2FC := ifelse(abs(log2FoldChange) >= log2FC, TRUE, FALSE)]
-  temp[, DEG := "No"]
-  temp[, DEG := ifelse(alpha & !log2FC, "FDR", DEG)]
-  temp[, DEG := ifelse(alpha & log2FC, "FDR and FC", DEG)]
+  
+  # Define the DEG status based on the criteria
+  temp[, DEG := "No"]  # Default to gray
+  temp[, DEG := ifelse(log2FoldChange < -log2FC & padj < alpha, "Downregulated", DEG)]
+  temp[, DEG := ifelse(log2FoldChange > log2FC & padj < alpha, "Upregulated", DEG)]
+  
+  # Set the order of factors to ensure proper color assignment
+  temp$DEG <- factor(temp$DEG, levels = c("Downregulated", "Upregulated", "No"))
+  
+  # Create the volcano plot
   ggplot(temp, aes(x = log2FoldChange, y = -log10(padj), color = DEG)) +
     geom_hline(yintercept = -log10(alpha), linetype = "dashed", color = "gray", linewidth = 1) +
     geom_vline(xintercept = log2FC, linetype = "dashed", color = "gray", linewidth = 1) +
     geom_vline(xintercept = -log2FC, linetype = "dashed", color = "gray", linewidth = 1) +
     geom_point(alpha = 0.4, size = 3) +
     scale_x_continuous(breaks = seq(ceiling(range(temp$log2FoldChange))[1], ceiling(range(temp$log2FoldChange))[2])) +
-    scale_color_manual(values = c("No" = "darkgray", "FDR" = "blue", "FDR and FC" = "red"), 
-                       labels = c(paste("FDR (", as.character(table(temp$DEG)[1]), ")", sep = ""), 
-                                  paste("FDR and FC (", as.character(table(temp$DEG)[2]),")", sep = ""), 
-                                  paste("Not Sig. (", as.character(table(temp$DEG)[3] + num_na), ")", sep = ""))) +
+    scale_color_manual(values = c("Downregulated" = "blue", "Upregulated" = "red", "No" = "darkgray"), 
+                       labels = c(paste("Downregulated (", as.character(table(temp$DEG)["Downregulated"]), ")", sep = ""), 
+                                  paste("Upregulated (", as.character(table(temp$DEG)["Upregulated"]),")", sep = ""), 
+                                  paste("Not Sig. (", as.character(table(temp$DEG)["No"] + num_na), ")", sep = ""))) +
     ylab(expression(-log[10]("adjusted p-value")))+
     xlab(expression(log[2]("fold change")))+
     labs(color = "DEG status") +
     theme_bw()
-}
-
-
-visualize_degs <- function(DEG_results, alpha, log2FC){
-  histogram <- ggplot(na.omit(DEG_results), aes(x = pvalue)) + 
-    geom_histogram(binwidth = 0.05, breaks = seq(0, 1, by = 0.05), 
-                   fill = "gray", color = "black") + 
-    xlab(expression(italic("p-value")))+
-    labs(title = "Histogram of p-values", y = "Frequency")+
-    theme_bw()
-  volcano <- custom_volcano(DEG_results, alpha, log2FC)
-  return(list(histogram, volcano))
 }
 
 ```
@@ -222,6 +215,12 @@ pheatmap(selected_temp,
          display_numbers = FALSE,  # Remove the log2FoldChange values from the cells
          color = colorRampPalette(c("blue", "white", "red"))(50),
          main = "Heatmap of Inverse Gene Expression Patterns",
-         angle_col = 0)
+         angle_col = 0,
+         show_rownames = FALSE)
+```
+
+```{r}
+
+
 ```
 
