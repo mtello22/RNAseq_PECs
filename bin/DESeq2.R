@@ -1,5 +1,6 @@
 library(DESeq2)
 library(data.table)
+library(biomaRt)
 
 load(file = "~/GitHub/RNAseq_PECs/data/txi_coldat_object.rds")
 
@@ -66,6 +67,33 @@ DEGs <- as.data.table(DEGs, keep.rownames = TRUE)
 setnames(DEGs, "rn", "ENSG")
 DEGs[, Group := "PTS3_vs_H2O2"]
 DEG_results <- rbind(DEG_results, DEGs)
+
+
+
+
+## ENSEMBL 112 is for GENCODE v46
+ensembl <- useEnsembl(biomart = "genes", 
+                      dataset = "hsapiens_gene_ensembl", 
+                      version = 112)
+gene_IDs <- getBM(filters= "ensembl_gene_id_version", 
+                  attributes= c("ensembl_gene_id",
+                                "ensembl_gene_id_version",
+                                "external_gene_name", 
+                                "entrezgene_id", 
+                                "entrezgene_accession"),
+                  values = DEG_results$ENSG, 
+                  mart= ensembl)
+gene_IDs <- as.data.table(na.omit(gene_IDs))
+
+
+DEG_results <- merge.data.table(y = DEG_results, 
+                                x= gene_IDs[, .SD, 
+                                            .SDcols = c("ensembl_gene_id_version",
+                                                        "external_gene_name",
+                                                        "entrezgene_id")], 
+                                by.y = "ENSG", 
+                                by.x = "ensembl_gene_id_version", 
+                                all.x = FALSE)
 
 fwrite(DEG_results, file = "~/GitHub/RNAseq_PECs/data/DEG_results.tsv", 
        quote = FALSE, append = FALSE, sep = '\t', 
