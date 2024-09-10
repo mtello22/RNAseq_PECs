@@ -28,7 +28,8 @@ custom_volcano <- function(DEG_results, alpha, log2FC, top_exp = 10){
   # Include gene names for the highest fold changes
   # Genes not selected will have their name set to "" in the plot
   setorder(temp, "log2FoldChange")
-  top_exp_genes <- temp[alpha == TRUE, external_gene_name][c(1:top_exp, (nrow(temp) - top_exp):nrow(temp))]
+  top_exp_genes <- temp[DEG == "FDR and FC", external_gene_name]
+  top_exp_genes <- top_exp_genes[c(1:top_exp, (length(top_exp_genes) - top_exp):length(top_exp_genes))]
   temp[, gene_label := ifelse(external_gene_name %in% top_exp_genes, external_gene_name, "")]
   # # Select highest positive FC
   # temp[1:top_exp, gene_label := external_gene_name]
@@ -198,3 +199,37 @@ temp[[2]]
 ### TODO: Explore samples in the conditions PTS3 and H2O2. Are ther a lot of genes with zero reads that scape filtering step?
 
 
+
+## Visualize shared set of DEGs
+
+Based on our final selection of FDR and Fold Change cutoffs we will determine what genes are shared across conditions using an upset plot. 
+
+```{r}
+# Select for DEGs based on alpha and log2FC
+degs_sig <- degs[padj < alpha & abs(log2FoldChange) >= log2FC]
+# Reshape data.table
+gene_mat <- dcast(data = degs_sig[, .(value = 1), 
+                                  by = .(ensembl_gene_id_version, Group)], 
+                formula = ensembl_gene_id_version ~ Group, 
+                value.var = "value", 
+                fill = 0)
+# Convert to matrix for compatibility with UpSet
+gene_mat <- as.matrix(gene_mat[, .SD, .SDcols = !"ensembl_gene_id_version"], rownames = gene_mat$ensembl_gene_id_version)
+
+# Possible modes: 
+# "distinct" (default), "intersect", "union"
+comb_mat <- make_comb_mat(gene_mat, mode = "distinct")
+UpSet(comb_mat)
+```
+
+Based on the UpSet plot, we can determine the genes that potentially could have reversed their expression change. 
+
+```{r}
+# Binary order:
+# GEN9, H2O2, PNS2, PTS3
+candidate_genes <- extract_comb(comb_mat, "1110")
+for(combination in c("1101","0111","1100","0110")){
+  candidate_genes <- unique(c(candidate_genes, extract_comb(comb_mat, combination)))
+}
+candidate_genes
+```

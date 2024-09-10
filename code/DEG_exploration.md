@@ -188,3 +188,52 @@ temp[[2]]
 ![](DEG_exploration_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
 
 ### TODO: Explore samples in the conditions PTS3 and H2O2. Are ther a lot of genes with zero reads that scape filtering step?
+
+## Visualize shared set of DEGs
+
+Based on our final selection of FDR and Fold Change cutoffs we will
+determine what genes are shared across conditions using an upset plot.
+
+``` r
+# Select for DEGs based on alpha and log2FC
+degs_sig <- degs[padj < alpha & abs(log2FoldChange) >= log2FC]
+# Reshape data.table
+gene_mat <- dcast(data = degs_sig[, .(value = 1), 
+                                  by = .(ensembl_gene_id_version, Group)], 
+                formula = ensembl_gene_id_version ~ Group, 
+                value.var = "value", 
+                fill = 0)
+# Convert to matrix for compatibility with UpSet
+gene_mat <- as.matrix(gene_mat[, .SD, .SDcols = !"ensembl_gene_id_version"], rownames = gene_mat$ensembl_gene_id_version)
+
+# Possible modes: 
+# "distinct" (default), "intersect", "union"
+comb_mat <- make_comb_mat(gene_mat, mode = "distinct")
+UpSet(comb_mat)
+```
+
+![](DEG_exploration_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
+
+Based on the UpSet plot, we can determine the genes that potentially
+could have reversed their expression change.
+
+``` r
+# Binary order:
+# GEN9, H2O2, PNS2, PTS3
+candidate_genes <- extract_comb(comb_mat, "1110")
+for(combination in c("1101","0111","1100","0110")){
+  candidate_genes <- unique(c(candidate_genes, extract_comb(comb_mat, combination)))
+}
+candidate_genes
+```
+
+    ##  [1] "ENSG00000133661.17" "ENSG00000168679.18" "ENSG00000108602.18"
+    ##  [4] "ENSG00000132938.22" "ENSG00000180638.19" "ENSG00000100985.7" 
+    ##  [7] "ENSG00000105825.14" "ENSG00000115461.5"  "ENSG00000124256.15"
+    ## [10] "ENSG00000126709.16" "ENSG00000134326.12" "ENSG00000157601.15"
+    ## [13] "ENSG00000165799.5"  "ENSG00000165949.13" "ENSG00000168961.17"
+    ## [16] "ENSG00000183486.14" "ENSG00000196684.12" "ENSG00000101180.17"
+    ## [19] "ENSG00000101825.8"  "ENSG00000109794.14" "ENSG00000132386.11"
+    ## [22] "ENSG00000137872.17" "ENSG00000145147.20" "ENSG00000145824.13"
+    ## [25] "ENSG00000169271.3"  "ENSG00000171227.7"  "ENSG00000171346.16"
+    ## [28] "ENSG00000171873.8"  "ENSG00000227507.3"
