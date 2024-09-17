@@ -13,6 +13,7 @@ library(ggplot2)
 library(ComplexHeatmap)
 library(stringr)
 library(ggrepel)
+library(scales)
 
 ## Custom functions
 
@@ -285,11 +286,11 @@ temp[, Category := ifelse(FDR == FALSE | is.na(FDR),
                           ifelse(Recovery < 0, 
                                  "Amplified Stress Response", 
                                  ifelse(Recovery < 100, 
-                                        "Partially Restored", 
+                                        "Partially Recovered", 
                                         "Amplified Recovery Response")))]
 
-temp[, Category := factor(Category, levels = c("Amplified Recovery Response", "Partially Restored", "Amplified Stress Response", "Not Significant"))]
-
+temp[, Category := factor(Category, levels = c("Amplified Recovery Response", "Partially Recovered", "Amplified Stress Response", "Not Significant"))]
+temp[, Group := str_replace(Group, "[0-9]_vs_H2O2", "")]
 exp_percent <- temp
 
 ```
@@ -297,7 +298,6 @@ exp_percent <- temp
 
 
 ```{r}
-
 ggplot(exp_percent, 
        aes(y = external_gene_name, 
            x = Recovery, 
@@ -309,7 +309,8 @@ ggplot(exp_percent,
   scale_fill_manual(values = c("green", "blue", "red", "white")) +
   theme_bw() +
   facet_grid(~Group) +
-  labs(x = "Recovered expression", y = NULL)
+  scale_x_continuous(labels = label_percent(scale = 1))+
+  labs(x = "Expression recovered after H2O2 exposure", y = NULL)
 ```
 
 
