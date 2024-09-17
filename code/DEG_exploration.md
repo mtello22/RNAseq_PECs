@@ -88,7 +88,7 @@ We will first visualize DEGs by group using volcano plots. We will
 define DEGs as follow:
 
 ``` r
-alpha <- 0.01
+alpha <- 0.05
 log2FC <- 2
 ```
 
@@ -225,12 +225,94 @@ candidate_genes
 ```
 
     ##  [1] "ENSG00000133661.17" "ENSG00000168679.18" "ENSG00000108602.18"
-    ##  [4] "ENSG00000132938.22" "ENSG00000180638.19" "ENSG00000100985.7" 
-    ##  [7] "ENSG00000105825.14" "ENSG00000115461.5"  "ENSG00000124256.15"
-    ## [10] "ENSG00000126709.16" "ENSG00000134326.12" "ENSG00000157601.15"
-    ## [13] "ENSG00000165799.5"  "ENSG00000165949.13" "ENSG00000168961.17"
-    ## [16] "ENSG00000183486.14" "ENSG00000196684.12" "ENSG00000101180.17"
-    ## [19] "ENSG00000101825.8"  "ENSG00000109794.14" "ENSG00000132386.11"
-    ## [22] "ENSG00000137872.17" "ENSG00000145147.20" "ENSG00000145824.13"
-    ## [25] "ENSG00000169271.3"  "ENSG00000171227.7"  "ENSG00000171346.16"
-    ## [28] "ENSG00000171873.8"  "ENSG00000227507.3"
+    ##  [4] "ENSG00000132938.22" "ENSG00000180638.19" "ENSG00000051382.9" 
+    ##  [7] "ENSG00000076258.10" "ENSG00000086848.15" "ENSG00000100612.14"
+    ## [10] "ENSG00000100985.7"  "ENSG00000101844.18" "ENSG00000105825.14"
+    ## [13] "ENSG00000108654.16" "ENSG00000115461.5"  "ENSG00000119041.11"
+    ## [16] "ENSG00000121552.4"  "ENSG00000124256.15" "ENSG00000126709.16"
+    ## [19] "ENSG00000134326.12" "ENSG00000157601.15" "ENSG00000164331.10"
+    ## [22] "ENSG00000165799.5"  "ENSG00000165949.13" "ENSG00000168874.13"
+    ## [25] "ENSG00000168961.17" "ENSG00000183486.14" "ENSG00000196684.12"
+    ## [28] "ENSG00000101180.17" "ENSG00000101825.8"  "ENSG00000109794.14"
+    ## [31] "ENSG00000132386.11" "ENSG00000137872.17" "ENSG00000145147.20"
+    ## [34] "ENSG00000145824.13" "ENSG00000162892.16" "ENSG00000169271.3" 
+    ## [37] "ENSG00000171227.7"  "ENSG00000171346.16" "ENSG00000171873.8" 
+    ## [40] "ENSG00000197406.8"  "ENSG00000227507.3"
+
+## Determine if genes reverted expression change
+
+We start with the most simple scenario where any gene that showed a
+change of expression in H2O2 vs Control AND Treatment vs H2O2 is
+considered for the analysis.
+
+``` r
+candidate_exp <- vst_counts[ensembl_gene_id_version %in% candidate_genes]
+candidate_exp[, ensembl_gene_id_version := NULL]
+candidate_exp[, entrezgene_id := NULL]
+candidate_exp <- melt(candidate_exp, 
+                      id.vars = "external_gene_name", 
+                      variable.name = "Group", 
+                      value.name = "ExpCount")
+
+candidate_exp[, Group := str_replace(Group, "_[1-3]", "")]
+candidate_exp[, Group := factor(Group, 
+                                levels = c("Ctrl", "H2O2", 
+                                           "GEN9", "PNS2", 
+                                           "PTS3"))]
+candidate_exp <- candidate_exp[, .(mean_exp = mean(ExpCount)), by = c("external_gene_name", "Group")]
+setkey(candidate_exp, "external_gene_name")
+```
+
+``` r
+temp <- dcast(candidate_exp, external_gene_name ~ Group, value.var = "mean_exp")
+temp <- temp[, .(baseline = H2O2 - Ctrl, 
+                 DGEN9 = H2O2 - GEN9, 
+                 DPNS2 = H2O2 - PNS2, 
+                 DPTS3 = H2O2 - PTS3), 
+             by = external_gene_name]
+temp <- temp[, .(GEN9_vs_H2O2 = round(DGEN9/baseline*100, 2),
+                 PNS2_vs_H2O2 = round(DPNS2/baseline*100, 2), 
+                 PTS3_vs_H2O2 = round(DPTS3/baseline*100, 2)), 
+             by = external_gene_name]
+temp <- melt(temp, 
+             id.vars = "external_gene_name", 
+             variable.name = "Group", 
+             value.name = "Recovery")
+temp[, Recovery := ifelse(Recovery < 0, Recovery - 100, Recovery)]
+
+setkeyv(degs, c("external_gene_name", "Group"))
+deg_status <- degs[temp[, .SD, 
+                        .SDcols = c("external_gene_name", "Group")],
+                   .(external_gene_name, 
+                     Group, 
+                     FDR = ifelse(padj < alpha, TRUE, FALSE))]
+temp <- merge.data.table(temp, deg_status)
+temp[, Category := ifelse(FDR == FALSE | is.na(FDR), 
+                          "Not Significant", 
+                          ifelse(Recovery < 0, 
+                                 "Amplified Stress Response", 
+                                 ifelse(Recovery < 100, 
+                                        "Partially Restored", 
+                                        "Amplified Recovery Response")))]
+
+temp[, Category := factor(Category, levels = c("Amplified Recovery Response", "Partially Restored", "Amplified Stress Response", "Not Significant"))]
+
+exp_percent <- temp
+```
+
+``` r
+ggplot(exp_percent, 
+       aes(y = external_gene_name, 
+           x = Recovery, 
+           fill = Category)) +
+  geom_bar(stat = "identity", color = "black", 
+           position = position_dodge()) + 
+  geom_vline(xintercept = c(100, -100), 
+             colour = "red", linetype = "dashed")+
+  scale_fill_manual(values = c("green", "blue", "red", "white")) +
+  theme_bw() +
+  facet_grid(~Group) +
+  labs(x = "Recovered expression", y = NULL)
+```
+
+![](DEG_exploration_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
