@@ -114,7 +114,7 @@ head(vst_counts)
 We will first visualize DEGs by group using volcano plots. We will define DEGs as follow:
 
 ```{r}
-alpha <- 0.05
+alpha <- 0.01
 log2FC <- 2
   
 ```
