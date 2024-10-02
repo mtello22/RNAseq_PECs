@@ -308,6 +308,9 @@ Ctrl and PNS2 have more similarities with each other compared to other experimen
 
 VST counts has not yet been conducted as clustering has shown in the initial EDA.
 
+```{r}
+write.table(exp_mat, file="exp_mat.csv", row.names=TRUE, sep=", ")
+```
 
 ## Variance stabilized counts visualization.
 
